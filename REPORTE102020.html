@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REPORTE 102020 - Control de Pruebas CT</title>
+    <!-- Tailwind CSS, Chart.js y SheetJS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-100 p-6 text-slate-800">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- Header Principal -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-bold uppercase">Proyecto</span>
+                    <h1 class="text-2xl font-bold text-slate-900">REPORTE 102020</h1>
+                </div>
+                <p id="activeRecordBanner" class="text-sm font-medium text-slate-500 mt-1">Cargando la informacion del ultimo corte...</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Carga de Archivo Excel/CSV -->
+                <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2">
+                    <span>Cargar Archivo</span>
+                    <input type="file" id="fileUploader" accept=".xlsx, .xls, .csv" class="hidden">
+                </label>
+
+                <!-- Boton para exportar ultima actualizacion a Excel -->
+                <button onclick="exportToExcel(false)" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2">
+                    <span>Exportar Corte a Excel</span>
+                </button>
+
+                <!-- Selector de Historial Past Records -->
+                <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 p-1.5 rounded-lg">
+                    <span class="text-xs font-semibold text-slate-500 pl-2">Historial:</span>
+                    <select id="historySelect" onchange="onHistoryChange(this.value)" class="bg-white border rounded px-2 py-1 text-sm text-slate-700 font-medium focus:outline-none">
+                        <option value="latest">Cargando datos...</option>
+                    </select>
+                </div>
+
+                <!-- Timestamp de Ultimo Corte -->
+                <div class="text-right border-l pl-4 border-slate-200">
+                    <span class="text-xs text-slate-400 block font-semibold uppercase">Ultimo Corte</span>
+                    <span id="lastUpdatedText" class="text-sm font-bold text-slate-700">--:--:--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Banner de Visualizacion Historica -->
+        <div id="historicalWarning" class="hidden bg-amber-50 border border-amber-200 p-3 rounded-lg flex justify-between items-center text-amber-800 text-sm">
+            <span id="historicalWarningText" class="font-medium">Viendo snapshot del historial</span>
+            <button onclick="loadLatestData()" class="underline font-bold text-amber-900 hover:text-amber-700">Volver a la version mas reciente</button>
+        </div>
+
+        <!-- Tarjetas Interactivas de Estatus (Filtros por Clic) -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            
+            <div id="cardRunning" onclick="filterByStatusCard('RUNNING')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">Pruebas Corriendo</span>
+                    <span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-semibold">Filtro</span>
+                </div>
+                <div id="countRunning" class="text-3xl font-extrabold text-slate-800 mt-2">0</div>
+                <p class="text-xs text-slate-400 mt-1">Haz clic para ver series en este corte</p>
+            </div>
+
+            <div id="cardPassed" onclick="filterByStatusCard('PASS')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-emerald-500 hover:shadow-md transition">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Pruebas Pasadas</span>
+                    <span class="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-semibold">Filtro</span>
+                </div>
+                <div id="countPassed" class="text-3xl font-extrabold text-slate-800 mt-2">0</div>
+                <p class="text-xs text-slate-400 mt-1">Haz clic para ver series aprobadas</p>
+            </div>
+
+            <div id="cardFailed" onclick="filterByStatusCard('FAIL')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-red-500 hover:shadow-md transition">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-red-600 uppercase tracking-wider">Pruebas Falladas</span>
+                    <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded font-semibold">Filtro</span>
+                </div>
+                <div id="countFailed" class="text-3xl font-extrabold text-slate-800 mt-2">0</div>
+                <p class="text-xs text-slate-400 mt-1">Haz clic para ver series con fallas</p>
+            </div>
+
+        </div>
+
+        <!-- Graficos y Ubicaciones -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-bold text-slate-800 mb-4">Distribucion por Estatus en el Corte</h2>
+                <div class="w-full h-64">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-bold text-slate-800 mb-4">Ubicaciones (Slot User)</h2>
+                <div id="locationSummary" class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-2">
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabla de Datos -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="p-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-2">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">Detalle de Series Registradas</h2>
+                    <p id="tableFilterLabel" class="text-xs text-slate-500 font-medium">Mostrando todas las series del corte actual</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="tableCount" class="text-xs font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-600">0 filas</span>
+                    <button id="exportFilteredBtn" onclick="exportToExcel(true)" class="hidden text-xs bg-slate-700 hover:bg-slate-800 text-white px-2.5 py-1 rounded font-semibold">Descargar Filtrados a Excel</button>
+                    <button id="clearFilterBtn" onclick="clearStatusFilter()" class="hidden text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded font-semibold">Ver Todos</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-50 text-slate-600 font-semibold border-b">
+                        <tr>
+                            <th class="p-3">Serial</th>
+                            <th class="p-3">Status</th>
+                            <th class="p-3">Slot User</th>
+                            <th class="p-3">Model / Phase</th>
+                            <th class="p-3">Fecha/Hora de Carga</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-100">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Integracion con Firebase SDK 10+ -->
+    <script type="module">
+        import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // Configuración de tu proyecto almacen-web-2026 / REPORTE 102020
+        const firebaseConfig = {
+            apiKey: "AIzaSyAX-WKQe_AvWQzNswGC1QIMRzz3RTMZB2o",
+            authDomain: "almacen-web-2026.firebaseapp.com",
+            projectId: "almacen-web-2026",
+            storageBucket: "almacen-web-2026.firebasestorage.app",
+            messagingSenderId: "777489188342",
+            appId: "1:777489188342:web:992bdeeeaa8bd89409f3d7"
+        };
+
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let activeData = [];
+        let currentlyDisplayedData = [];
+        let historicalSnapshots = [];
+        let chartInstance = null;
+        let currentTimestampStr = '';
+
+        // Carga inicial
+        window.addEventListener('DOMContentLoaded', () => {
+            loadLatestData();
+            setupFileUploader();
+        });
+
+        // 1. Cargar el ultimo corte de informacion guardado
+        window.loadLatestData = async function() {
+            try {
+                await fetchHistoryList();
+
+                const q = query(collection(db, "historial_cargas"), orderBy("timestamp", "desc"), limit(1));
+                const snap = await getDocs(q);
+
+                if (!snap.empty) {
+                    const latestDoc = snap.docs[0].data();
+                    renderDataset(latestDoc.records, latestDoc.formattedDate, false);
+                } else {
+                    // Fallback a coleccion REPORTE directa
+                    const repSnap = await getDocs(collection(db, "REPORTE"));
+                    const docs = [];
+                    repSnap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+                    
+                    const now = new Date().toLocaleString();
+                    renderDataset(formatRawDocs(docs), now, false);
+                }
+            } catch (err) {
+                console.error("Error al cargar ultimo corte:", err);
+            }
+        };
+
+        // 2. Obtener lista del historial de cortes
+        async function fetchHistoryList() {
+            try {
+                const q = query(collection(db, "historial_cargas"), orderBy("timestamp", "desc"));
+                const snap = await getDocs(q);
+                
+                historicalSnapshots = [];
+                const historySelect = document.getElementById('historySelect');
+                historySelect.innerHTML = '';
+
+                if (snap.empty) {
+                    historySelect.innerHTML = `<option value="latest">Sin archivos cargados</option>`;
+                    return;
+                }
+
+                snap.forEach((d, idx) => {
+                    const data = d.data();
+                    historicalSnapshots.push({ id: d.id, ...data });
+
+                    const option = document.createElement('option');
+                    option.value = d.id;
+                    option.innerText = (idx === 0) ? `Ultima actualizacion (${data.formattedDate})` : `${data.formattedDate} (${data.records.length} items)`;
+                    historySelect.appendChild(option);
+                });
+            } catch (err) {
+                console.error("Error al obtener historial:", err);
+            }
+        }
+
+        // 3. Manejar cambio en el selector de historial
+        window.onHistoryChange = function(selectedId) {
+            const selected = historicalSnapshots.find(item => item.id === selectedId);
+            if (!selected) return;
+
+            const isLatest = historicalSnapshots[0] && historicalSnapshots[0].id === selectedId;
+            renderDataset(selected.records, selected.formattedDate, !isLatest);
+        };
+
+        // 4. Mapeo de formato uniforme
+        function formatRawDocs(docs) {
+            return docs.map(row => ({
+                serial: row['Serial'] || row['Serial Number'] || row.id || 'N/A',
+                status: String(row['Status'] || row['Current Status'] || row['Fail Reason'] || 'SIN ESTATUS').trim().toUpperCase(),
+                slotUser: String(row['Slot User'] || row['Current Slot'] || row['To'] || 'Desconocido').trim(),
+                model: String(row['Model'] || 'N/A').trim(),
+                phase: String(row['Phase'] || 'N/A').trim(),
+                receivedFull: `${row['Date Received'] || row['Date'] || ''} ${row['Time Received'] || row['Time'] || ''}`.trim() || 'N/A'
+            }));
+        }
+
+        // 5. Renderizar datos en pantalla ajustando leyendas de hora de carga
+        function renderDataset(data, timestampText, isHistorical) {
+            activeData = data;
+            currentlyDisplayedData = data;
+            currentTimestampStr = timestampText;
+
+            document.getElementById('lastUpdatedText').innerText = timestampText;
+            document.getElementById('activeRecordBanner').innerText = isHistorical 
+                ? `Mostrando corte historico del: ${timestampText}` 
+                : `Datos actualizados por ultima vez el ${timestampText}`;
+
+            const warningBox = document.getElementById('historicalWarning');
+            if (isHistorical) {
+                warningBox.classList.remove('hidden');
+                document.getElementById('historicalWarningText').innerText = `Viendo estado de los datos al corte de fecha/hora: ${timestampText}`;
+            } else {
+                warningBox.classList.add('hidden');
+            }
+
+            processAndRender(activeData);
+        }
+
+        // 6. Procesar metricas
+        function processAndRender(data) {
+            let countRun = 0;
+            let countPass = 0;
+            let countFail = 0;
+
+            const statusCounts = {};
+            const locationCounts = {};
+
+            data.forEach(row => {
+                const st = row.status;
+                
+                if (st.includes('RUN') || st.includes('TEST') || st.includes('CORRIENDO')) {
+                    countRun++;
+                } else if (st.includes('PASS') || st.includes('EXITO')) {
+                    countPass++;
+                } else {
+                    countFail++;
+                }
+
+                statusCounts[st] = (statusCounts[st] || 0) + 1;
+
+                const loc = parseSlot(row.slotUser);
+                locationCounts[loc] = (locationCounts[loc] || 0) + 1;
+            });
+
+            document.getElementById('countRunning').innerText = countRun;
+            document.getElementById('countPassed').innerText = countPass;
+            document.getElementById('countFailed').innerText = countFail;
+
+            renderTable(data);
+            renderChart(statusCounts);
+            renderLocations(locationCounts);
+        }
+
+        function parseSlot(slotStr) {
+            if (!slotStr || slotStr === 'Desconocido') return 'Desconocido';
+            let str = String(slotStr);
+            let modulo = 'Otro';
+            if (str.includes('M6') || str.startsWith('6')) modulo = 'Modulo 6';
+            if (str.includes('M7') || str.startsWith('7')) modulo = 'Modulo 7';
+            return `${modulo} (${str})`;
+        }
+
+        // 7. Filtro por clic en las tarjetas
+        window.filterByStatusCard = function(category) {
+            const filtered = activeData.filter(row => {
+                const st = row.status;
+                if (category === 'RUNNING') return st.includes('RUN') || st.includes('TEST') || st.includes('CORRIENDO');
+                if (category === 'PASS') return st.includes('PASS') || st.includes('EXITO');
+                if (category === 'FAIL') return !st.includes('RUN') && !st.includes('TEST') && !st.includes('CORRIENDO') && !st.includes('PASS') && !st.includes('EXITO');
+                return true;
+            });
+
+            currentlyDisplayedData = filtered;
+            document.getElementById('clearFilterBtn').classList.remove('hidden');
+            document.getElementById('exportFilteredBtn').classList.remove('hidden');
+            document.getElementById('tableFilterLabel').innerText = `Filtrado por tipo: ${category}`;
+            renderTable(filtered);
+        };
+
+        window.clearStatusFilter = function() {
+            currentlyDisplayedData = activeData;
+            document.getElementById('clearFilterBtn').classList.add('hidden');
+            document.getElementById('exportFilteredBtn').classList.add('hidden');
+            document.getElementById('tableFilterLabel').innerText = `Mostrando todas las series del corte actual`;
+            renderTable(activeData);
+        };
+
+        function renderTable(dataList) {
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
+            document.getElementById('tableCount').innerText = `${dataList.length} filas`;
+
+            dataList.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition';
+
+                const st = row.status;
+                let badgeStyle = 'bg-red-100 text-red-800';
+                if (st.includes('RUN') || st.includes('TEST') || st.includes('CORRIENDO')) badgeStyle = 'bg-blue-100 text-blue-800';
+                if (st.includes('PASS') || st.includes('EXITO')) badgeStyle = 'bg-emerald-100 text-emerald-800';
+
+                tr.innerHTML = `
+                    <td class="p-3 font-mono font-bold text-slate-800">${row.serial}</td>
+                    <td class="p-3"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeStyle}">${row.status}</span></td>
+                    <td class="p-3 text-slate-600">${parseSlot(row.slotUser)}</td>
+                    <td class="p-3 text-slate-500">${row.model} / ${row.phase}</td>
+                    <td class="p-3 text-slate-500">${row.receivedFull}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function renderChart(statusCounts) {
+            const ctx = document.getElementById('statusChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(statusCounts),
+                    datasets: [{
+                        data: Object.values(statusCounts),
+                        backgroundColor: ['#3B82F6', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        function renderLocations(locationCounts) {
+            const container = document.getElementById('locationSummary');
+            container.innerHTML = '';
+            
+            Object.entries(locationCounts).forEach(([loc, count]) => {
+                const card = document.createElement('div');
+                card.className = 'p-3 bg-slate-50 border border-slate-200 rounded-lg text-center';
+                card.innerHTML = `
+                    <div class="text-xs text-slate-500 font-medium truncate" title="${loc}">${loc}</div>
+                    <div class="text-lg font-bold text-slate-800 mt-1">${count}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 8. Exportar datos a Excel
+        window.exportToExcel = function(onlyFiltered = false) {
+            const exportData = onlyFiltered ? currentlyDisplayedData : activeData;
+
+            if (!exportData || exportData.length === 0) {
+                alert("No hay registros para exportar.");
+                return;
+            }
+
+            const formattedForExcel = exportData.map(item => ({
+                "Serial Number": item.serial,
+                "Status": item.status,
+                "Slot User": item.slotUser,
+                "Model": item.model,
+                "Phase": item.phase,
+                "Fecha y Hora de Carga": item.receivedFull
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(formattedForExcel);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte 102020");
+
+            const dateClean = (currentTimestampStr || "corte").replace(/[\/\\:*?"<>| ]/g, "_");
+            const suffix = onlyFiltered ? "filtrado" : "completo";
+            const fileName = `Reporte_102020_${suffix}_${dateClean}.xlsx`;
+
+            XLSX.writeFile(workbook, fileName);
+        };
+
+        // 9. Registro de Nuevo Archivo
+        function setupFileUploader() {
+            document.getElementById('fileUploader').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = async function(evt) {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(firstSheet, {raw: false});
+
+                    const parsedRecords = formatRawDocs(json);
+                    const now = new Date();
+                    const formattedDate = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+
+                    // Guardar snapshot con el timestamp de la carga del archivo
+                    try {
+                        await addDoc(collection(db, "historial_cargas"), {
+                            timestamp: now.getTime(),
+                            formattedDate: formattedDate,
+                            records: parsedRecords
+                        });
+
+                        // Actualizar vista
+                        renderDataset(parsedRecords, formattedDate, false);
+                        await fetchHistoryList();
+                        alert(`Archivo procesado. Nuevo corte registrado a las ${formattedDate}.`);
+                    } catch (err) {
+                        console.error("Error al guardar snapshot:", err);
+                        alert("Error guardando el corte en Firestore.");
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+    </script>
+</body>
+</html>
