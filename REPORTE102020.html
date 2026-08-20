@@ -1,66 +1,133 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>REPORTE 102020 - Control de Pruebas CT</title>
-    <!-- Tailwind CSS, Chart.js y SheetJS -->
+    <!-- Tailwind CSS, Chart.js, Chart.js DataLabels Plugin y SheetJS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
-<body class="bg-slate-100 p-6 text-slate-800">
+<body class="bg-slate-100 p-6 text-slate-800 min-h-screen">
 
-    <div class="max-w-7xl mx-auto space-y-6">
+    <!-- Pantalla de Inicio de Sesión (Login Modal) -->
+    <div id="loginScreen" class="fixed inset-0 bg-slate-900 bg-opacity-80 z-50 flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full space-y-6">
+            <div class="text-center">
+                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-bold uppercase">Acceso Restringido</span>
+                <h2 class="text-2xl font-bold text-slate-900 mt-2">REPORTE 102020</h2>
+                <p class="text-sm text-slate-500 mt-1">Ingresa con tus credenciales para acceder</p>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Correo Electrónico</label>
+                    <input type="email" id="loginEmail" required placeholder="usuario@empresa.com" class="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Contraseña</label>
+                    <input type="password" id="loginPassword" required placeholder="••••••••" class="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div id="loginError" class="hidden text-xs text-red-600 font-semibold bg-red-50 p-2.5 rounded border border-red-200">
+                    Credenciales incorrectas o usuario no registrado.
+                </div>
+
+                <button type="submit" id="btnLogin" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-sm transition">
+                    Iniciar Sesión
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Contenido Principal de la Aplicación -->
+    <div id="appContent" class="hidden max-w-7xl mx-auto space-y-6">
         
         <!-- Header Principal -->
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
-            <div>
-                <div class="flex items-center gap-2">
-                    <span class="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-bold uppercase">Proyecto</span>
-                    <h1 class="text-2xl font-bold text-slate-900">REPORTE 102020</h1>
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <!-- Barra Superior: Info del Proyecto y Usuario -->
+            <div class="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-md text-xs font-bold uppercase">Proyecto</span>
+                        <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">REPORTE 102020</h1>
+                    </div>
+                    <p id="activeRecordBanner" class="text-xs font-medium text-slate-500 mt-1">Cargando datos del sistema...</p>
                 </div>
-                <p id="activeRecordBanner" class="text-sm font-medium text-slate-500 mt-1">Cargando la informacion del ultimo corte...</p>
+
+                <div class="flex items-center gap-4 text-right">
+                    <div>
+                        <span class="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Último Corte</span>
+                        <span id="lastUpdatedText" class="text-sm font-extrabold text-slate-700">--:--:--</span>
+                    </div>
+                    <div class="h-8 w-px bg-slate-200 hidden sm:block"></div>
+                    <div>
+                        <span id="currentUserBadge" class="text-xs font-medium text-slate-600 block">--</span>
+                        <button onclick="handleLogout()" class="text-xs font-bold text-red-600 hover:text-red-800 underline">Cerrar Sesión</button>
+                    </div>
+                </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-3">
-                <!-- Carga de Archivo Excel/CSV -->
-                <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2">
-                    <span>Cargar Archivo</span>
-                    <input type="file" id="fileUploader" accept=".xlsx, .xls, .csv" class="hidden">
-                </label>
+            <!-- Barra Inferior: Botones de Acción -->
+            <div class="p-4 bg-white flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Carga de Archivo (SOLO ADMIN) -->
+                    <label id="uploadBtnContainer" class="hidden cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg font-semibold text-xs shadow-sm transition flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        <span>Cargar Archivo Excel</span>
+                        <input type="file" id="fileUploader" accept=".xlsx, .xls, .csv" class="hidden">
+                    </label>
 
-                <!-- Boton para exportar ultima actualizacion a Excel -->
-                <button onclick="exportToExcel(false)" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2">
-                    <span>Exportar Corte a Excel</span>
-                </button>
-
-                <!-- Selector de Historial Past Records -->
-                <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 p-1.5 rounded-lg">
-                    <span class="text-xs font-semibold text-slate-500 pl-2">Historial:</span>
-                    <select id="historySelect" onchange="onHistoryChange(this.value)" class="bg-white border rounded px-2 py-1 text-sm text-slate-700 font-medium focus:outline-none">
-                        <option value="latest">Cargando datos...</option>
-                    </select>
+                    <!-- Exportar a Excel -->
+                    <button onclick="exportToExcel(false)" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg font-semibold text-xs shadow-sm transition flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span>Exportar Corte a Excel</span>
+                    </button>
                 </div>
 
-                <!-- Timestamp de Ultimo Corte -->
-                <div class="text-right border-l pl-4 border-slate-200">
-                    <span class="text-xs text-slate-400 block font-semibold uppercase">Ultimo Corte</span>
-                    <span id="lastUpdatedText" class="text-sm font-bold text-slate-700">--:--:--</span>
+                <div>
+                    <!-- Borrar Corte Activo (SOLO ADMIN) -->
+                    <button id="deleteActiveBtn" onclick="deleteCurrentSnapshot()" class="hidden bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3.5 py-2 rounded-lg font-semibold text-xs transition">
+                        Borrar Corte Activo
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- Banner de Visualizacion Historica -->
+        <!-- Historial y Administrador -->
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <span class="text-sm font-bold text-slate-700">Seleccionar Corte:</span>
+                <select id="historySelect" onchange="onHistoryChange(this.value)" class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 font-medium focus:outline-none">
+                    <option value="latest">Cargando datos...</option>
+                </select>
+            </div>
+
+            <!-- Botón del Administrador de Historial (SOLO ADMIN) -->
+            <button id="toggleHistoryBtn" onclick="toggleHistoryManager()" class="hidden text-xs font-semibold text-slate-600 hover:text-slate-900 underline">
+                Gestionar/Eliminar Cortes del Historial
+            </button>
+        </div>
+
+        <!-- Panel Administrador de Historial -->
+        <div id="historyManagerPanel" class="hidden bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+            <h3 class="text-sm font-bold text-slate-800">Administrador de Cargas Registradas</h3>
+            <p class="text-xs text-slate-500">Selecciona cualquier carga errónea para eliminar permanentemente todo su lote de registros.</p>
+            <div id="historyListContainer" class="divide-y divide-slate-200 max-h-48 overflow-y-auto bg-white rounded-lg border border-slate-200">
+            </div>
+        </div>
+
+        <!-- Warning Histórico -->
         <div id="historicalWarning" class="hidden bg-amber-50 border border-amber-200 p-3 rounded-lg flex justify-between items-center text-amber-800 text-sm">
             <span id="historicalWarningText" class="font-medium">Viendo snapshot del historial</span>
-            <button onclick="loadLatestData()" class="underline font-bold text-amber-900 hover:text-amber-700">Volver a la version mas reciente</button>
+            <button onclick="loadLatestData()" class="underline font-bold text-amber-900 hover:text-amber-700">Volver a la versión más reciente</button>
         </div>
 
-        <!-- Tarjetas Interactivas de Estatus (Filtros por Clic) -->
+        <!-- Tarjetas Interactivas de Estatus -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            
-            <div id="cardRunning" onclick="filterByStatusCard('RUNNING')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition">
+            <div id="cardRunning" onclick="filterByStatusCard('RUNNING')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-blue-500 transition">
                 <div class="flex justify-between items-center">
                     <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">Pruebas Corriendo</span>
                     <span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-semibold">Filtro</span>
@@ -69,7 +136,7 @@
                 <p class="text-xs text-slate-400 mt-1">Haz clic para ver series en este corte</p>
             </div>
 
-            <div id="cardPassed" onclick="filterByStatusCard('PASS')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-emerald-500 hover:shadow-md transition">
+            <div id="cardPassed" onclick="filterByStatusCard('PASS')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-emerald-500 transition">
                 <div class="flex justify-between items-center">
                     <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Pruebas Pasadas</span>
                     <span class="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-semibold">Filtro</span>
@@ -78,7 +145,7 @@
                 <p class="text-xs text-slate-400 mt-1">Haz clic para ver series aprobadas</p>
             </div>
 
-            <div id="cardFailed" onclick="filterByStatusCard('FAIL')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-red-500 hover:shadow-md transition">
+            <div id="cardFailed" onclick="filterByStatusCard('FAIL')" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-red-500 transition">
                 <div class="flex justify-between items-center">
                     <span class="text-xs font-bold text-red-600 uppercase tracking-wider">Pruebas Falladas</span>
                     <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded font-semibold">Filtro</span>
@@ -86,33 +153,38 @@
                 <div id="countFailed" class="text-3xl font-extrabold text-slate-800 mt-2">0</div>
                 <p class="text-xs text-slate-400 mt-1">Haz clic para ver series con fallas</p>
             </div>
-
         </div>
 
-        <!-- Graficos y Ubicaciones -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h2 class="text-lg font-bold text-slate-800 mb-4">Distribucion por Estatus en el Corte</h2>
-                <div class="w-full h-64">
-                    <canvas id="statusChart"></canvas>
+        <!-- Gráfico Principal -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">Distribución General por Estatus</h2>
+                    <p class="text-xs text-slate-500">Haz clic en cualquier barra para filtrar la tabla de abajo</p>
+                </div>
+                <!-- Indicador CT Totales y Rango Temporal -->
+                <div class="bg-slate-100 border border-slate-200 px-3.5 py-2 rounded-lg text-right">
+                    <span class="text-[10px] font-bold uppercase text-slate-500 block tracking-wider">CT totales</span>
+                    <span id="chartTotalCount" class="text-base font-extrabold text-slate-800 block">0 series</span>
+                    <span id="chartDateRange" class="text-[11px] font-medium text-slate-500 block mt-0.5">Rango: --</span>
                 </div>
             </div>
-
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h2 class="text-lg font-bold text-slate-800 mb-4">Ubicaciones (Slot User)</h2>
-                <div id="locationSummary" class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-2">
-                </div>
+            <div class="w-full h-80">
+                <canvas id="statusChart"></canvas>
             </div>
         </div>
 
         <!-- Tabla de Datos -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div id="tablaDetalle" onclick="scrollToTable()" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden cursor-pointer">
             <div class="p-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-2">
                 <div>
-                    <h2 class="text-lg font-bold text-slate-800">Detalle de Series Registradas</h2>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2 group">
+                        <span>Detalle de Series Registradas</span>
+                        <svg class="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </h2>
                     <p id="tableFilterLabel" class="text-xs text-slate-500 font-medium">Mostrando todas las series del corte actual</p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2" onclick="event.stopPropagation()">
                     <span id="tableCount" class="text-xs font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-600">0 filas</span>
                     <button id="exportFilteredBtn" onclick="exportToExcel(true)" class="hidden text-xs bg-slate-700 hover:bg-slate-800 text-white px-2.5 py-1 rounded font-semibold">Descargar Filtrados a Excel</button>
                     <button id="clearFilterBtn" onclick="clearStatusFilter()" class="hidden text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded font-semibold">Ver Todos</button>
@@ -124,7 +196,6 @@
                         <tr>
                             <th class="p-3">Serial</th>
                             <th class="p-3">Status</th>
-                            <th class="p-3">Slot User</th>
                             <th class="p-3">Model / Phase</th>
                             <th class="p-3">Fecha/Hora de Carga</th>
                         </tr>
@@ -137,12 +208,12 @@
 
     </div>
 
-    <!-- Integracion con Firebase SDK 10+ -->
+    <!-- SDK Firebase Auth y Firestore -->
     <script type="module">
         import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Configuración de tu proyecto almacen-web-2026 / REPORTE 102020
         const firebaseConfig = {
             apiKey: "AIzaSyAX-WKQe_AvWQzNswGC1QIMRzz3RTMZB2o",
             authDomain: "almacen-web-2026.firebaseapp.com",
@@ -153,21 +224,77 @@
         };
 
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const auth = getAuth(app);
         const db = getFirestore(app);
+
+        const ADMIN_EMAIL = "roberto.figueroa@gdl.fii-na.com";
+        let isAdmin = false;
 
         let activeData = [];
         let currentlyDisplayedData = [];
         let historicalSnapshots = [];
-        let chartInstance = null;
+        let currentSnapshotId = null;
         let currentTimestampStr = '';
+        let chartInstance = null;
 
-        // Carga inicial
-        window.addEventListener('DOMContentLoaded', () => {
-            loadLatestData();
-            setupFileUploader();
+        window.scrollToTable = function() {
+            document.getElementById('tablaDetalle')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('appContent').classList.remove('hidden');
+
+                const userEmail = (user.email || "").toLowerCase().trim();
+                isAdmin = (userEmail === ADMIN_EMAIL.toLowerCase().trim());
+
+                document.getElementById('currentUserBadge').innerText = `${user.email} (${isAdmin ? 'Admin' : 'Lectura'})`;
+
+                applyUserPermissions();
+                loadLatestData();
+                setupFileUploader();
+            } else {
+                document.getElementById('loginScreen').classList.remove('hidden');
+                document.getElementById('appContent').classList.add('hidden');
+            }
         });
 
-        // 1. Cargar el ultimo corte de informacion guardado
+        function applyUserPermissions() {
+            const uploadBtn = document.getElementById('uploadBtnContainer');
+            const deleteActiveBtn = document.getElementById('deleteActiveBtn');
+            const toggleHistoryBtn = document.getElementById('toggleHistoryBtn');
+
+            if (isAdmin) {
+                uploadBtn.classList.remove('hidden');
+                deleteActiveBtn.classList.remove('hidden');
+                toggleHistoryBtn.classList.remove('hidden');
+            } else {
+                uploadBtn.classList.add('hidden');
+                deleteActiveBtn.classList.add('hidden');
+                toggleHistoryBtn.classList.add('hidden');
+            }
+        }
+
+        window.handleLogin = async function(e) {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const pass = document.getElementById('loginPassword').value;
+            const errDiv = document.getElementById('loginError');
+
+            errDiv.classList.add('hidden');
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+            } catch (err) {
+                console.error("Login failed:", err);
+                errDiv.classList.remove('hidden');
+            }
+        };
+
+        window.handleLogout = function() {
+            signOut(auth);
+        };
+
         window.loadLatestData = async function() {
             try {
                 await fetchHistoryList();
@@ -176,23 +303,19 @@
                 const snap = await getDocs(q);
 
                 if (!snap.empty) {
-                    const latestDoc = snap.docs[0].data();
-                    renderDataset(latestDoc.records, latestDoc.formattedDate, false);
+                    const latestDoc = snap.docs[0];
+                    const data = latestDoc.data();
+                    currentSnapshotId = latestDoc.id;
+                    renderDataset(data.records, data.formattedDate, false);
                 } else {
-                    // Fallback a coleccion REPORTE directa
-                    const repSnap = await getDocs(collection(db, "REPORTE"));
-                    const docs = [];
-                    repSnap.forEach(d => docs.push({ id: d.id, ...d.data() }));
-                    
-                    const now = new Date().toLocaleString();
-                    renderDataset(formatRawDocs(docs), now, false);
+                    currentSnapshotId = null;
+                    renderDataset([], "--:--:--", false);
                 }
             } catch (err) {
-                console.error("Error al cargar ultimo corte:", err);
+                console.error("Error al cargar datos:", err);
             }
         };
 
-        // 2. Obtener lista del historial de cortes
         async function fetchHistoryList() {
             try {
                 const q = query(collection(db, "historial_cargas"), orderBy("timestamp", "desc"));
@@ -200,58 +323,121 @@
                 
                 historicalSnapshots = [];
                 const historySelect = document.getElementById('historySelect');
+                const historyListContainer = document.getElementById('historyListContainer');
+
                 historySelect.innerHTML = '';
+                historyListContainer.innerHTML = '';
 
                 if (snap.empty) {
-                    historySelect.innerHTML = `<option value="latest">Sin archivos cargados</option>`;
+                    historySelect.innerHTML = `<option value="">Sin cargas registradas</option>`;
+                    historyListContainer.innerHTML = `<p class="p-3 text-xs text-slate-400 text-center">No hay registros en la base de datos.</p>`;
                     return;
                 }
 
                 snap.forEach((d, idx) => {
                     const data = d.data();
-                    historicalSnapshots.push({ id: d.id, ...data });
+                    const docId = d.id;
+                    historicalSnapshots.push({ id: docId, ...data });
 
                     const option = document.createElement('option');
-                    option.value = d.id;
-                    option.innerText = (idx === 0) ? `Ultima actualizacion (${data.formattedDate})` : `${data.formattedDate} (${data.records.length} items)`;
+                    option.value = docId;
+                    option.innerText = (idx === 0) ? `Última actualización (${data.formattedDate})` : `${data.formattedDate} (${data.records.length} items)`;
                     historySelect.appendChild(option);
+
+                    const row = document.createElement('div');
+                    row.className = "p-3 flex justify-between items-center text-xs text-slate-700 hover:bg-slate-50";
+                    
+                    const deleteBtnHtml = isAdmin ? `
+                        <button onclick="deleteSnapshotById('${docId}', '${data.formattedDate}')" class="text-red-600 hover:text-red-800 font-bold px-2 py-1 rounded hover:bg-red-50">
+                            Eliminar Lote
+                        </button>
+                    ` : '';
+
+                    row.innerHTML = `
+                        <div>
+                            <span class="font-bold text-slate-900">${data.formattedDate}</span>
+                            <span class="text-slate-400 ml-2">(${data.records ? data.records.length : 0} series)</span>
+                        </div>
+                        ${deleteBtnHtml}
+                    `;
+                    historyListContainer.appendChild(row);
                 });
             } catch (err) {
-                console.error("Error al obtener historial:", err);
+                console.error("Error obteniendo historial:", err);
             }
         }
 
-        // 3. Manejar cambio en el selector de historial
         window.onHistoryChange = function(selectedId) {
+            if (!selectedId) return;
             const selected = historicalSnapshots.find(item => item.id === selectedId);
             if (!selected) return;
 
+            currentSnapshotId = selected.id;
             const isLatest = historicalSnapshots[0] && historicalSnapshots[0].id === selectedId;
             renderDataset(selected.records, selected.formattedDate, !isLatest);
         };
 
-        // 4. Mapeo de formato uniforme
-        function formatRawDocs(docs) {
-            return docs.map(row => ({
-                serial: row['Serial'] || row['Serial Number'] || row.id || 'N/A',
-                status: String(row['Status'] || row['Current Status'] || row['Fail Reason'] || 'SIN ESTATUS').trim().toUpperCase(),
-                slotUser: String(row['Slot User'] || row['Current Slot'] || row['To'] || 'Desconocido').trim(),
-                model: String(row['Model'] || 'N/A').trim(),
-                phase: String(row['Phase'] || 'N/A').trim(),
-                receivedFull: `${row['Date Received'] || row['Date'] || ''} ${row['Time Received'] || row['Time'] || ''}`.trim() || 'N/A'
-            }));
+        window.toggleHistoryManager = function() {
+            if (!isAdmin) return;
+            document.getElementById('historyManagerPanel').classList.toggle('hidden');
+        };
+
+        window.deleteCurrentSnapshot = async function() {
+            if (!isAdmin) {
+                alert("No tienes permisos para realizar esta acción.");
+                return;
+            }
+
+            if (!currentSnapshotId) {
+                alert("No hay un corte activo para eliminar.");
+                return;
+            }
+
+            if (confirm(`¿Confirmas eliminar el lote de datos cargado el ${currentTimestampStr}?`)) {
+                await deleteSnapshotById(currentSnapshotId, currentTimestampStr);
+            }
+        };
+
+        window.deleteSnapshotById = async function(docId, dateLabel) {
+            if (!isAdmin) {
+                alert("No tienes permisos para realizar esta acción.");
+                return;
+            }
+
+            if (!confirm(`¿Eliminar la carga del ${dateLabel}?`)) return;
+
+            try {
+                await deleteDoc(doc(db, "historial_cargas", docId));
+                alert(`Carga del ${dateLabel} eliminada.`);
+                await loadLatestData();
+            } catch (err) {
+                console.error("Error al eliminar:", err);
+                alert("Error eliminando la carga.");
+            }
+        };
+
+        function formatRawDocs(rawJsonArray) {
+            return rawJsonArray.map(row => {
+                const rowValues = Object.values(row);
+                return {
+                    serial: row['Serial'] || row['Serial Number'] || rowValues[0] || 'N/A',
+                    status: String(row['Status'] || row['Current Status'] || row['Fail Reason'] || rowValues[1] || 'SIN ESTATUS').trim().toUpperCase(),
+                    model: String(row['Model'] || row['Modelo'] || rowValues[2] || 'N/A').trim(),
+                    phase: String(row['Phase'] || row['Fase'] || 'N/A').trim(),
+                    receivedFull: `${row['Date Received'] || row['Date'] || ''} ${row['Time Received'] || row['Time'] || ''}`.trim() || 'N/A'
+                };
+            });
         }
 
-        // 5. Renderizar datos en pantalla ajustando leyendas de hora de carga
         function renderDataset(data, timestampText, isHistorical) {
-            activeData = data;
-            currentlyDisplayedData = data;
+            activeData = data || [];
+            currentlyDisplayedData = activeData;
             currentTimestampStr = timestampText;
 
             document.getElementById('lastUpdatedText').innerText = timestampText;
-            document.getElementById('activeRecordBanner').innerText = isHistorical 
-                ? `Mostrando corte historico del: ${timestampText}` 
-                : `Datos actualizados por ultima vez el ${timestampText}`;
+            document.getElementById('activeRecordBanner').innerText = activeData.length === 0
+                ? "No existen cargas en el sistema."
+                : (isHistorical ? `Mostrando corte histórico del: ${timestampText}` : `Datos actualizados por última vez el ${timestampText}`);
 
             const warningBox = document.getElementById('historicalWarning');
             if (isHistorical) {
@@ -264,18 +450,16 @@
             processAndRender(activeData);
         }
 
-        // 6. Procesar metricas
         function processAndRender(data) {
             let countRun = 0;
             let countPass = 0;
             let countFail = 0;
 
-            const statusCounts = {};
-            const locationCounts = {};
+            // Calcular el primer tiempo registrado en los CT
+            let firstRecordTime = null;
 
             data.forEach(row => {
                 const st = row.status;
-                
                 if (st.includes('RUN') || st.includes('TEST') || st.includes('CORRIENDO')) {
                     countRun++;
                 } else if (st.includes('PASS') || st.includes('EXITO')) {
@@ -284,31 +468,50 @@
                     countFail++;
                 }
 
-                statusCounts[st] = (statusCounts[st] || 0) + 1;
-
-                const loc = parseSlot(row.slotUser);
-                locationCounts[loc] = (locationCounts[loc] || 0) + 1;
+                if (row.receivedFull && row.receivedFull !== 'N/A') {
+                    const parsedDate = new Date(row.receivedFull);
+                    if (!isNaN(parsedDate.getTime())) {
+                        if (!firstRecordTime || parsedDate < firstRecordTime) {
+                            firstRecordTime = parsedDate;
+                        }
+                    } else if (!firstRecordTime) {
+                        firstRecordTime = row.receivedFull; // Fallback a String directo
+                    }
+                }
             });
+
+            // Formatear la fecha/hora mínima encontrada
+            let firstTimeStr = "--";
+            if (firstRecordTime) {
+                if (firstRecordTime instanceof Date) {
+                    firstTimeStr = `${firstRecordTime.toLocaleDateString()} ${firstRecordTime.toLocaleTimeString()}`;
+                } else {
+                    firstTimeStr = firstRecordTime;
+                }
+            }
+
+            // Actualizar etiqueta del Rango (Desde primer registro hasta fecha/hora de carga del lote)
+            const rangeElem = document.getElementById('chartDateRange');
+            if (rangeElem) {
+                if (data.length > 0) {
+                    rangeElem.innerText = `Del ${firstTimeStr} al ${currentTimestampStr}`;
+                } else {
+                    rangeElem.innerText = `Rango: Sin datos`;
+                }
+            }
 
             document.getElementById('countRunning').innerText = countRun;
             document.getElementById('countPassed').innerText = countPass;
             document.getElementById('countFailed').innerText = countFail;
 
             renderTable(data);
-            renderChart(statusCounts);
-            renderLocations(locationCounts);
+            renderChart({
+                'Corriendo': countRun,
+                'Pasadas': countPass,
+                'Falladas': countFail
+            });
         }
 
-        function parseSlot(slotStr) {
-            if (!slotStr || slotStr === 'Desconocido') return 'Desconocido';
-            let str = String(slotStr);
-            let modulo = 'Otro';
-            if (str.includes('M6') || str.startsWith('6')) modulo = 'Modulo 6';
-            if (str.includes('M7') || str.startsWith('7')) modulo = 'Modulo 7';
-            return `${modulo} (${str})`;
-        }
-
-        // 7. Filtro por clic en las tarjetas
         window.filterByStatusCard = function(category) {
             const filtered = activeData.filter(row => {
                 const st = row.status;
@@ -323,6 +526,8 @@
             document.getElementById('exportFilteredBtn').classList.remove('hidden');
             document.getElementById('tableFilterLabel').innerText = `Filtrado por tipo: ${category}`;
             renderTable(filtered);
+
+            scrollToTable();
         };
 
         window.clearStatusFilter = function() {
@@ -340,7 +545,7 @@
 
             dataList.forEach(row => {
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
+                tr.className = 'hover:bg-slate-50 transition cursor-pointer';
 
                 const st = row.status;
                 let badgeStyle = 'bg-red-100 text-red-800';
@@ -350,7 +555,6 @@
                 tr.innerHTML = `
                     <td class="p-3 font-mono font-bold text-slate-800">${row.serial}</td>
                     <td class="p-3"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeStyle}">${row.status}</span></td>
-                    <td class="p-3 text-slate-600">${parseSlot(row.slotUser)}</td>
                     <td class="p-3 text-slate-500">${row.model} / ${row.phase}</td>
                     <td class="p-3 text-slate-500">${row.receivedFull}</td>
                 `;
@@ -358,43 +562,70 @@
             });
         }
 
-        function renderChart(statusCounts) {
+        function renderChart(groupedCounts) {
+            const totalCount = (groupedCounts['Corriendo'] || 0) + (groupedCounts['Pasadas'] || 0) + (groupedCounts['Falladas'] || 0);
+            
+            const totalElem = document.getElementById('chartTotalCount');
+            if (totalElem) totalElem.innerText = `${totalCount} series`;
+
             const ctx = document.getElementById('statusChart').getContext('2d');
             if (chartInstance) chartInstance.destroy();
 
+            Chart.register(ChartDataLabels);
+
             chartInstance = new Chart(ctx, {
-                type: 'doughnut',
+                type: 'bar',
                 data: {
-                    labels: Object.keys(statusCounts),
+                    labels: ['Pruebas Corriendo', 'Pruebas Pasadas', 'Pruebas Falladas'],
                     datasets: [{
-                        data: Object.values(statusCounts),
-                        backgroundColor: ['#3B82F6', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6']
+                        label: 'Cantidad de Series',
+                        data: [
+                            groupedCounts['Corriendo'] || 0,
+                            groupedCounts['Pasadas'] || 0,
+                            groupedCounts['Falladas'] || 0
+                        ],
+                        backgroundColor: ['#3B82F6', '#10B981', '#EF4444'],
+                        borderRadius: 6,
+                        borderSkipped: false
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom' } }
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const categories = ['RUNNING', 'PASS', 'FAIL'];
+                            filterByStatusCard(categories[index]);
+                        }
+                    },
+                    onHover: (event, elements) => {
+                        event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                    },
+                    layout: {
+                        padding: { top: 25 }
+                    },
+                    plugins: { 
+                        legend: { display: false },
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            offset: 4,
+                            color: '#1E293B',
+                            font: { weight: 'bold', size: 13 },
+                            formatter: function(value) { return value; }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        }
+                    }
                 }
             });
         }
 
-        function renderLocations(locationCounts) {
-            const container = document.getElementById('locationSummary');
-            container.innerHTML = '';
-            
-            Object.entries(locationCounts).forEach(([loc, count]) => {
-                const card = document.createElement('div');
-                card.className = 'p-3 bg-slate-50 border border-slate-200 rounded-lg text-center';
-                card.innerHTML = `
-                    <div class="text-xs text-slate-500 font-medium truncate" title="${loc}">${loc}</div>
-                    <div class="text-lg font-bold text-slate-800 mt-1">${count}</div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        // 8. Exportar datos a Excel
         window.exportToExcel = function(onlyFiltered = false) {
             const exportData = onlyFiltered ? currentlyDisplayedData : activeData;
 
@@ -406,7 +637,6 @@
             const formattedForExcel = exportData.map(item => ({
                 "Serial Number": item.serial,
                 "Status": item.status,
-                "Slot User": item.slotUser,
                 "Model": item.model,
                 "Phase": item.phase,
                 "Fecha y Hora de Carga": item.receivedFull
@@ -418,14 +648,19 @@
 
             const dateClean = (currentTimestampStr || "corte").replace(/[\/\\:*?"<>| ]/g, "_");
             const suffix = onlyFiltered ? "filtrado" : "completo";
-            const fileName = `Reporte_102020_${suffix}_${dateClean}.xlsx`;
-
-            XLSX.writeFile(workbook, fileName);
+            XLSX.writeFile(workbook, `Reporte_102020_${suffix}_${dateClean}.xlsx`);
         };
 
-        // 9. Registro de Nuevo Archivo
         function setupFileUploader() {
-            document.getElementById('fileUploader').addEventListener('change', function(e) {
+            const uploader = document.getElementById('fileUploader');
+            if (!uploader) return;
+
+            uploader.addEventListener('change', function(e) {
+                if (!isAdmin) {
+                    alert("No tienes permisos para subir archivos.");
+                    return;
+                }
+
                 const file = e.target.files[0];
                 if (!file) return;
 
@@ -440,18 +675,17 @@
                     const now = new Date();
                     const formattedDate = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
 
-                    // Guardar snapshot con el timestamp de la carga del archivo
                     try {
-                        await addDoc(collection(db, "historial_cargas"), {
+                        const newDocRef = await addDoc(collection(db, "historial_cargas"), {
                             timestamp: now.getTime(),
                             formattedDate: formattedDate,
                             records: parsedRecords
                         });
 
-                        // Actualizar vista
+                        currentSnapshotId = newDocRef.id;
                         renderDataset(parsedRecords, formattedDate, false);
                         await fetchHistoryList();
-                        alert(`Archivo procesado. Nuevo corte registrado a las ${formattedDate}.`);
+                        alert(`Archivo procesado con éxito. Nuevo corte registrado a las ${formattedDate}.`);
                     } catch (err) {
                         console.error("Error al guardar snapshot:", err);
                         alert("Error guardando el corte en Firestore.");
